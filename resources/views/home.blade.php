@@ -106,6 +106,7 @@ loadSchedules(); // load awal
 
 async function loadSchedules() {
     const params = new URLSearchParams(new FormData(document.getElementById('filterForm')));
+    console.log(params);
     const res = await fetch(`/api/schedules?${params}`);
     const data = await res.json();
     const list = Array.isArray(data) ? data : data.data || [];
@@ -119,6 +120,13 @@ async function loadSchedules() {
     }
 
     list.forEach(s => {
+        // Fungsi untuk format waktu ke jam + WIB
+    const formatTimeToWIB = (dateTimeString) => {
+        const date = new Date(dateTimeString);
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes} WIB`;
+    };
         const card = `
             <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition">
                 <div class="p-6">
@@ -126,12 +134,12 @@ async function loadSchedules() {
                     <p class="text-sm text-gray-500 mb-2">${s.bus.type}</p>
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between"><span>Rute:</span><span class="font-medium">${s.route.origin} → ${s.route.destination}</span></div>
-                        <div class="flex justify-between"><span>Berangkat:</span><span class="font-medium">${s.departure_time.substring(0,16)}</span></div>
+                        <div class="flex justify-between"><span>Berangkat:</span><span class="font-medium">${formatTimeToWIB(s.departure_time)}</span></div>
                         <div class="flex justify-between"><span>Kursi tersedia:</span><span class="text-green-600 font-bold">${s.available_seats}/${s.bus.capacity}</span></div>
                     </div>
                     <div class="mt-4 flex gap-2">
                         <a href="/schedules/${s.id}/order" class="flex-1 bg-red-600 text-white text-center py-2 rounded">Pesan Tiket</a>
-                        <button onclick="openTracking(${s.bus.id})" class="bg-blue-600 text-white px-3 py-2 rounded">Tracking 🗺️</button>
+                        <button onclick="openTracking(${s.bus.bus_id})" class="bg-blue-600 text-white px-3 py-2 rounded">Tracking 🗺️</button>
                     </div>
                 </div>
             </div>`;

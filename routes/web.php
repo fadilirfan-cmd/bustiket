@@ -38,11 +38,11 @@ Route::get('/schedules/{schedule}/order', [BookingController::class, 'create'])-
 Route::post('/schedules/{schedule}/order', [BookingController::class, 'store'])->name('orders.store');
 
 Route::get('api/schedules', function () {
-    $routeId = request('route_id');
+    $routeId = request('route');
     $date    = request('date');
 
     $query = Schedule::with(['bus:bus_id,bus_name,type,capacity', 'route:id,origin,destination'])
-        ->select('bus_id','route_id','departure_time','arrival_time','price')
+        ->select('id','bus_id','route_id','departure_time','arrival_time','price')
         ->where('status','active')
         ->where('departure_time','>=', now());
 
