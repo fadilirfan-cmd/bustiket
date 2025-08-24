@@ -152,7 +152,7 @@ class LoginController extends Controller
         // Determine redirect URL
         $redirect = $user->role === 'admin' 
             ? '/admin/dashboard' 
-            : '/pic/dashboard';
+            : '/pic/dashboard/my-bus';
         
         return response()->json([
             'success' => true,
