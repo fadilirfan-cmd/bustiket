@@ -4,287 +4,182 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Services\FonteOtpService;
+use App\Services\FonnteService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Session;
+use Carbon\Carbon;
+use App\Models\Bus;
+use Illuminate\Support\Facades\Http;
 
 class LoginController extends Controller
 {
-    /**
-     * Menampilkan form login
-     *
-     * @return \Illuminate\View\View
-     */
-    public function showLoginForm()
+    private $fonteToken = 'FrGrGaLDC9NN83ZvfuAm'; // Ganti dengan token Fonnte Anda
+    public function sendOTP(Request $request)
     {
-        return view('auth.login');
-    }
-
-    /**
-     * Proses login dengan nomor WhatsApp
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\RedirectResponse
-     */
-    public function login(Request $request)
-    {
-        // Validasi input
         $request->validate([
-            'whatsapp' => 'required|string|min:10|max:15',
-        ], [
-            'whatsapp.required' => 'Nomor WhatsApp wajib diisi',
-            'whatsapp.min' => 'Nomor WhatsApp minimal 10 digit',
-            'whatsapp.max' => 'Nomor WhatsApp maksimal 15 digit',
+            'whatsapp' => 'required|regex:/^62[0-9]{9,13}$/',
+            'role' => 'required|in:admin,pic_bus',
+            //'bus_id' => 'required_if:role,pic_bus|exists:buses,bus_id'
         ]);
-
-        // Cari user berdasarkan nomor WhatsApp
-        $user = User::where('whatsapp', $request->whatsapp)->first();
-
-        // Jika user tidak ditemukan
-        if (!$user) {
-            return back()
-                ->withInput($request->only('whatsapp'))
-                ->withErrors(['whatsapp' => 'Nomor WhatsApp tidak terdaftar']);
-        }
-
-        // Cek apakah user aktif
-        if ($user->status === 'inactive') {
-            return back()
-                ->withInput($request->only('whatsapp'))
-                ->withErrors(['whatsapp' => 'Akun Anda tidak aktif. Silakan hubungi admin.']);
-        }
-
-        try {
-            // Generate dan kirim OTP
-            $otpService = new FonteOtpService();
-            $otp = $otpService->generateAndSendOtp($user->whatsapp);
-
-            if (!$otp) {
-                return back()
-                    ->withInput($request->only('whatsapp'))
-                    ->withErrors(['whatsapp' => 'Gagal mengirim OTP. Silakan coba lagi']);
+        
+        $whatsapp = $request->whatsapp;
+        $role = $request->role;
+        $busId = $request->bus_id;
+        
+        // Generate 6-digit OTP
+        $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+        
+        // Check if user exists
+        $user = User::where('whatsapp', $whatsapp)->first();
+        
+        if ($user) {
+            // Validate role
+            if ($user->role !== $role) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Nomor WhatsApp terdaftar dengan jenis akun yang berbeda'
+                ], 400);
             }
-
-            // Simpan OTP ke database
-            $user->update([
-                'otp' => Hash::make($otp),
-                'otp_expires_at' => now()->addMinutes(5),
-                'otp_attempts' => 0,
+            
+            // Validate bus for PIC
+            if ($role === 'pic_bus' && $user->bus_id != $busId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak terdaftar sebagai PIC untuk bus ini'
+                ], 400);
+            }
+        } else {
+            // Create new user
+            $user = User::create([
+                'name' => 'User ' . substr($whatsapp, -4),
+                'whatsapp' => $whatsapp,
+                'password' => bcrypt($otp), // Temporary password
+                'role' => $role,
+                'bus_id' => $role === 'pic_bus' ? $busId : null
             ]);
-
-            // Simpan user ID di session
-            Session::put('otp_user_id', $user->id);
-            Session::put('otp_whatsapp', $user->whatsapp);
-
-            // Redirect ke halaman verifikasi OTP
-            return redirect()->route('otp.verify.form')
-                ->with('success', 'Kode OTP telah dikirim ke WhatsApp Anda');
-
-        } catch (\Exception $e) {
-            // Log error
-            \Log::error('OTP Send Error: ' . $e->getMessage());
-            
-            return back()
-                ->withInput($request->only('whatsapp'))
-                ->withErrors(['whatsapp' => 'Terjadi kesalahan. Silakan coba lagi']);
         }
-    }
-
-    /**
-     * Menampilkan form verifikasi OTP
-     *
-     * @return \Illuminate\View\View|\Illuminate\Http\RedirectResponse
-     */
-    public function showOtpForm()
-    {
-        // Cek apakah ada session otp_user_id
-        if (!Session::has('otp_user_id')) {
-            return redirect()->route('login')
-                ->withErrors(['error' => 'Sesi telah berakhir. Silakan login kembali']);
-        }
-
-        $whatsapp = Session::get('otp_whatsapp');
         
-        // Sembunyikan nomor WhatsApp untuk keamanan
-        $maskedWhatsapp = $this->maskWhatsapp($whatsapp);
-
-        return view('auth.otp-verify', compact('maskedWhatsapp'));
-    }
-
-    /**
-     * Memverifikasi OTP
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\RedirectResponse
-     */
-    public function verifyOtp(Request $request)
-    {
-        // Validasi input OTP
-        $request->validate([
-            'otp' => 'required|string|size:6',
-        ], [
-            'otp.required' => 'Kode OTP wajib diisi',
-            'otp.size' => 'Kode OTP harus 6 digit',
+        // Update OTP
+        $user->update([
+            'otp' => $otp,
+            'otp_expires_at' => Carbon::now()->addMinutes(5)
         ]);
-
-        // Ambil user ID dari session
-        $userId = Session::get('otp_user_id');
         
-        if (!$userId) {
-            return redirect()->route('login')
-                ->withErrors(['error' => 'Sesi telah berakhir. Silakan login kembali']);
+        // Prepare message
+        $busInfo = '';
+        if ($role === 'pic_bus' && $busId) {
+            $bus = Bus::find($busId);
+            $busInfo = "\nBus: {$bus->bus_name} ({$bus->bus_code})";
         }
-
-        // Cari user
-        $user = User::find($userId);
-
+        
+        $message = "🚌 *PT Medal Sekarwangi BUS*\n\n";
+        $message .= "Kode OTP Anda: *{$otp}*\n";
+        $message .= "Login sebagai: *" . ($role === 'admin' ? 'Admin' : 'PIC Bus') . "*{$busInfo}\n\n";
+        $message .= "⏱️ Kode ini berlaku selama 5 menit.\n";
+        $message .= "⚠️ *Jangan bagikan kode ini kepada siapapun.*";
+        
+        // Send OTP via Fonnte
+        $response = Http::withHeaders([
+            'Authorization' => $this->fonteToken
+        ])->post('https://api.fonnte.com/send', [
+            'target' => $whatsapp,
+            'message' => $message,
+            'countryCode' => '62'
+        ]);
+        
+        if ($response->successful()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'OTP berhasil dikirim ke WhatsApp Anda'
+            ]);
+        }
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Gagal mengirim OTP. Silakan coba lagi.'
+        ], 500);
+    }
+    
+    public function verifyOTP(Request $request)
+    {
+        $request->validate([
+            'whatsapp' => 'required',
+            'otp' => 'required|digits:6',
+            'role' => 'required|in:admin,pic_bus',
+            'bus_id' => 'nullable'
+        ]);
+        
+        $user = User::where('whatsapp', $request->whatsapp)
+            ->where('otp', $request->otp)
+            ->where('otp_expires_at', '>', Carbon::now())
+            ->first();
+        
         if (!$user) {
-            Session::forget(['otp_user_id', 'otp_whatsapp']);
-            return redirect()->route('login')
-                ->withErrors(['error' => 'User tidak ditemukan']);
+            return response()->json([
+                'success' => false,
+                'message' => 'Kode OTP tidak valid atau sudah kadaluarsa'
+            ], 401);
         }
-
-        // Cek apakah OTP sudah kadaluarsa
-        if (now()->greaterThan($user->otp_expires_at)) {
-            $user->update(['otp' => null, 'otp_expires_at' => null]);
-            Session::forget(['otp_user_id', 'otp_whatsapp']);
-            
-            return redirect()->route('login')
-                ->withErrors(['error' => 'Kode OTP telah kadaluarsa. Silakan login kembali']);
+        
+        // Verify role and bus
+        if ($user->role !== $request->role) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Role tidak sesuai'
+            ], 401);
         }
-
-        // Cek jumlah percobaan OTP
-        if ($user->otp_attempts >= 3) {
-            Session::forget(['otp_user_id', 'otp_whatsapp']);
-            
-            return redirect()->route('login')
-                ->withErrors(['error' => 'Terlalu banyak percobaan. Silakan login kembali']);
+        
+        if ($request->role === 'pic_bus' && $user->bus_id != $request->bus_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bus tidak sesuai'
+            ], 401);
         }
-
-        // Verifikasi OTP
-        if (!Hash::check($request->otp, $user->otp)) {
-            // Increment percobaan
-            $user->increment('otp_attempts');
-            
-            $remainingAttempts = 3 - $user->otp_attempts;
-            
-            return back()
-                ->withInput($request->only('otp'))
-                ->withErrors(['otp' => "Kode OTP salah. Sisa percobaan: $remainingAttempts"]);
-        }
-
-        // Login user
-        Auth::login($user);
-
-        // Bersihkan OTP dan session
+        
+        // Clear OTP and mark as verified
         $user->update([
             'otp' => null,
             'otp_expires_at' => null,
-            'otp_attempts' => 0,
-            'last_login_at' => now(),
-            'last_login_ip' => $request->ip(),
+            'is_verified' => true
         ]);
-
-        Session::forget(['otp_user_id', 'otp_whatsapp']);
-
-        // Regenerate session untuk keamanan
-        $request->session()->regenerate();
-
-        // Redirect berdasarkan role
-        if ($user->hasRole('agen')) {
-            return redirect()->intended('/agen/dashboard');
-        } elseif ($user->hasRole('penumpang')) {
-            return redirect()->intended('/dashboard');
-        }
-
-        return redirect()->intended('/dashboard');
+        
+        // Login user
+        Auth::login($user);
+        
+        // Create token for API
+        //$token = $user->createToken('auth_token')->plainTextToken;
+        
+        // Determine redirect URL
+        $redirect = $user->role === 'admin' 
+            ? '/admin/dashboard' 
+            : '/pic/dashboard';
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Login berhasil',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'whatsapp' => $user->whatsapp,
+                'role' => $user->role,
+                'bus_id' => $user->bus_id,
+                'bus' => $user->bus ? [
+                    'id' => $user->bus->id,
+                    'name' => $user->bus->bus_name,
+                    'code' => $user->bus->bus_code
+                ] : null
+            ],
+            //'token' => $token,
+            'redirect' => $redirect
+        ]);
     }
-
-    /**
-     * Mengirim ulang OTP
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\RedirectResponse
-     */
-    public function resendOtp(Request $request)
-    {
-        // Cek apakah ada session otp_user_id
-        if (!Session::has('otp_user_id')) {
-            return redirect()->route('login')
-                ->withErrors(['error' => 'Sesi telah berakhir. Silakan login kembali']);
-        }
-
-        $userId = Session::get('otp_user_id');
-        $user = User::find($userId);
-
-        if (!$user) {
-            Session::forget(['otp_user_id', 'otp_whatsapp']);
-            return redirect()->route('login')
-                ->withErrors(['error' => 'User tidak ditemukan']);
-        }
-
-        // Cek cooldown (30 detik)
-        if ($user->otp_sent_at && now()->diffInSeconds($user->otp_sent_at) < 30) {
-            return back()->withErrors(['error' => 'Tunggu 30 detik sebelum mengirim ulang']);
-        }
-
-        try {
-            // Generate dan kirim OTP baru
-            $otpService = new FonteOtpService();
-            $otp = $otpService->generateAndSendOtp($user->whatsapp);
-
-            if (!$otp) {
-                return back()->withErrors(['error' => 'Gagal mengirim OTP. Silakan coba lagi']);
-            }
-
-            // Update OTP di database
-            $user->update([
-                'otp' => Hash::make($otp),
-                'otp_expires_at' => now()->addMinutes(5),
-                'otp_attempts' => 0,
-                'otp_sent_at' => now(),
-            ]);
-
-            return back()->with('success', 'Kode OTP baru telah dikirim');
-
-        } catch (\Exception $e) {
-            \Log::error('OTP Resend Error: ' . $e->getMessage());
-            
-            return back()->withErrors(['error' => 'Terjadi kesalahan. Silakan coba lagi']);
-        }
-    }
-
-    /**
-     * Logout user
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\RedirectResponse
-     */
+    
     public function logout(Request $request)
     {
         Auth::logout();
-
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-
-        return redirect('/');
-    }
-
-    /**
-     * Menyembunyikan nomor WhatsApp untuk keamanan
-     *
-     * @param  string  $whatsapp
-     * @return string
-     */
-    private function maskWhatsapp($whatsapp)
-    {
-        // Format: 6281234567890 -> 6281****7890
-        if (strlen($whatsapp) > 8) {
-            return substr($whatsapp, 0, 4) . '****' . substr($whatsapp, -4);
-        }
         
-        return $whatsapp;
+        return redirect('/login')->with('success', 'Anda telah berhasil logout');
     }
 }

@@ -178,7 +178,7 @@
                         
                         <div class="mb-4">
                             <label for="email" class="block text-gray-700 mb-2">Lokasi Jemput</label>
-                            <input type="text" id="lokasi" name="lokasi" required
+                            <input type="text" id="jemput" name="jemput" required
                                    class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                     </form>
@@ -252,7 +252,7 @@
         };
         
         // Seat data with pre-booked seats
-        const bookedSeats = [3, 8, 12, 17, 22, 27, 33, 38, 41, 47];
+        let bookedSeats = []; // Inisialisasi kosong dulu
         let selectedSeats = [];
         
         // DOM Elements
@@ -262,6 +262,56 @@
         const bookButton = document.getElementById('bookButton');
         const bookingModal = document.getElementById('bookingModal');
         const closeModalButton = document.getElementById('closeModalButton');
+
+        // Fungsi untuk mengambil data kursi yang sudah dipesan
+function fetchBookedSeats() {
+    // Ambil schedule_id dari URL atau dari input hidden
+    const urlParts = window.location.pathname.split('/');
+    const scheduleId = urlParts[urlParts.indexOf('schedules') + 1];
+    
+    // Buat URL endpoint API
+    const apiUrl = `/api/schedules/${scheduleId}/booked-seats`;
+    
+    // Tampilkan loading state jika perlu
+    //console.log('Fetching booked seats for schedule ID:', scheduleId);
+    
+    // Panggil API untuk mendapatkan kursi yang sudah dipesan
+    fetch(apiUrl)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to fetch booked seats');
+            }
+            return response.json();
+        })
+        .then(data => {
+            //console.log('Booked seats data:', data);
+            
+            if (data.success) {
+                // Update variabel global bookedSeats
+                bookedSeats = data.booked_seats;
+                // Update tampilan kursi berdasarkan data yang didapat
+                updateSeatDisplay();
+                
+            }
+        })
+        .catch(error => {
+            //console.error('Error fetching booked seats:', error);
+            // Fallback ke data default jika gagal
+            updateSeatDisplay();
+        });
+}
+
+function updateSeatDisplay() {
+    // Tandai kursi yang sudah dipesan
+    bookedSeats.forEach(seatNumber => {
+        const seatElement = document.querySelector(`.seat[data-seat-number="${seatNumber}"]`);
+        if (seatElement) {
+            seatElement.classList.add('booked');
+            seatElement.classList.add('unavailable');
+            seatElement.removeEventListener('click', toggleSeatSelection);
+        }
+    });
+}
         
         // Generate seat layout
         function generateSeatLayout() {
@@ -313,16 +363,21 @@
         }
         
         // Create a seat element
-        function createSeatElement(seatNumber) {
+         // Create a seat element
+         function createSeatElement(seatNumber) {
             const seat = document.createElement('div');
+            // Periksa apakah kursi sudah dipesan
             const isBooked = bookedSeats.includes(seatNumber);
             
-            seat.className = `seat w-8 h-8 rounded-md flex items-center justify-center font-medium cursor-pointer ${isBooked ? 'booked' : 'available'}`;
+            seat.className = `seat w-8 h-8 rounded-md flex items-center justify-center font-medium ${isBooked ? 'booked' : 'available cursor-pointer'}`;
             seat.textContent = seatNumber;
             seat.dataset.seatNumber = seatNumber;
             
+            // Hanya tambahkan event listener jika kursi belum dipesan
             if (!isBooked) {
-                seat.addEventListener('click', () => toggleSeatSelection(seatNumber, seat));
+                seat.addEventListener('click', function() {
+                    toggleSeatSelection(seatNumber, this);
+                });
             }
             
             return seat;
@@ -330,6 +385,10 @@
         
         // Toggle seat selection
         function toggleSeatSelection(seatNumber, seatElement) {
+            // Periksa sekali lagi apakah kursi tersedia
+            if (seatElement.classList.contains('booked')) {
+                return; // Jangan lakukan apa-apa jika kursi sudah terpesan
+            }
             const seatIndex = selectedSeats.indexOf(seatNumber);
             
             if (seatIndex === -1) {
@@ -427,52 +486,98 @@
         
         // Handle booking submission
         function handleBooking() {
-            const fullName = document.getElementById('fullName').value.trim();
-            const phone = document.getElementById('phone').value.trim();
-            
-            if (!fullName || !phone) {
-                alert('Please fill in all required fields.');
-                return;
+    const fullName = document.getElementById('fullName').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const jemput = document.getElementById('jemput').value.trim(); // Tambahkan field jemput
+
+    if (!fullName || !phone || !jemput) {
+        alert('Silakan isi semua kolom yang diperlukan.');
+        return;
+    }
+
+    if (selectedSeats.length === 0) {
+        alert('Silakan pilih minimal satu kursi.');
+        return;
+    }
+
+    const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
+    const totalAmount = selectedSeats.length * config.pricePerSeat;
+    const bookingId = generateBookingId();
+
+    // Update modal content
+    document.getElementById('bookingId').textContent = bookingId;
+    document.getElementById('modalSeats').textContent = selectedSeats.sort((a, b) => a - b).join(', ');
+    document.getElementById('modalPassenger').textContent = fullName;
+    document.getElementById('modalAmount').textContent = formatCurrency(totalAmount);
+    document.getElementById('modalPayment').textContent = formatPaymentMethod(paymentMethod);
+
+    // Kirim data ke server via AJAX
+    const formData = new FormData();
+    formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content')); // CSRF token
+    formData.append('schedule_id', config.scheduleId);
+    formData.append('passenger_name', fullName);
+    formData.append('passenger_phone', phone);
+    formData.append('jemput', jemput);
+    formData.append('payment_method', paymentMethod);
+    formData.append('selected_seats', selectedSeats.join(','));
+    formData.append('total_price', totalAmount);
+    formData.append('order_number', bookingId); // Gunakan booking ID yang dibuat di frontend
+
+    // Tampilkan loading state
+    const bookButton = document.getElementById('bookButton');
+    bookButton.disabled = true;
+    bookButton.textContent = 'Memproses...';
+
+    fetch('/process-booking', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        
+        return response.json();
+    })
+    .then(data => {
+        //console.log('Pemesanan berhasil:', data);
+        
+        // Show modal setelah data berhasil disimpan
+        bookingModal.classList.remove('hidden');
+
+        // Mark selected seats as booked
+        selectedSeats.forEach(seatNumber => {
+            const seatElement = document.querySelector(`.seat[data-seat-number="${seatNumber}"]`);
+            if (seatElement) {
+                seatElement.classList.remove('selected');
+                seatElement.classList.remove('pulse');
+                seatElement.classList.add('booked');
+                seatElement.removeEventListener('click', toggleSeatSelection);
             }
-            
-            if (selectedSeats.length === 0) {
-                alert('Please select at least one seat.');
-                return;
-            }
-            
-            const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
-            const totalAmount = selectedSeats.length * config.pricePerSeat;
-            const bookingId = generateBookingId();
-            
-            // Update modal content
-            document.getElementById('bookingId').textContent = bookingId;
-            document.getElementById('modalSeats').textContent = selectedSeats.sort((a, b) => a - b).join(', ');
-            document.getElementById('modalPassenger').textContent = fullName;
-            document.getElementById('modalAmount').textContent = formatCurrency(totalAmount);
-            document.getElementById('modalPayment').textContent = formatPaymentMethod(paymentMethod);
-            
-            // Show modal
-            bookingModal.classList.remove('hidden');
-            
-            // Mark selected seats as booked
-            selectedSeats.forEach(seatNumber => {
-                const seatElement = document.querySelector(`.seat[data-seat-number="${seatNumber}"]`);
-                if (seatElement) {
-                    seatElement.classList.remove('selected');
-                    seatElement.classList.remove('pulse');
-                    seatElement.classList.add('booked');
-                    seatElement.removeEventListener('click', toggleSeatSelection);
-                }
-                bookedSeats.push(seatNumber);
-            });
-            
-            // Reset selection
-            selectedSeats = [];
-            updateSelectedSeatsDisplay();
-            
-            // Reset form
-            document.getElementById('passengerForm').reset();
+            bookedSeats.push(seatNumber);
+        });
+
+        // Reset selection
+        selectedSeats = [];
+        updateSelectedSeatsDisplay();
+
+        // Reset form
+        document.getElementById('passengerForm').reset();
+        
+        // Opsional: Redirect ke halaman konfirmasi jika perlu
+        if (data.redirect_url) {
+            setTimeout(() => {
+                window.location.href = data.redirect_url;
+            }, 2000); // Redirect setelah 2 detik
         }
+    })
+    .catch(error => {
+        //console.error('Error:', error);
+        alert('Terjadi kesalahan: ' + error.message);
+    })
+    .finally(() => {
+        // Reset loading state
+        bookButton.disabled = false;
+        bookButton.textContent = 'Ambil Tiket';
+    });
+}
         
         // Format payment method for display
         function formatPaymentMethod(method) {
@@ -494,6 +599,7 @@
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             generateSeatLayout();
+            fetchBookedSeats();
             bookButton.addEventListener('click', handleBooking);
             closeModalButton.addEventListener('click', closeModal);
         });

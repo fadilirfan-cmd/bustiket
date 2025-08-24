@@ -21,7 +21,7 @@
             <a href="{{ url('/') }}" class="text-gray-700 hover:text-red-600">Beranda</a>
             <a href="#jadwal" class="text-gray-700 hover:text-red-600">Jadwal</a>
             @auth
-                <a href="{{ route('bookings.history') }}" class="text-red-600 font-medium">Riwayat</a>
+                <a href="{{ route('logout') }}" class="text-red-600 font-medium">Riwayat</a>
                 <form action="{{ route('logout') }}" method="POST" class="inline">
                     @csrf
                     <button type="submit" class="text-gray-700 hover:text-red-600">Logout</button>
@@ -135,7 +135,7 @@ async function loadSchedules() {
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between"><span>Rute:</span><span class="font-medium">${s.route.origin} → ${s.route.destination}</span></div>
                         <div class="flex justify-between"><span>Berangkat:</span><span class="font-medium">${formatTimeToWIB(s.departure_time)}</span></div>
-                        <div class="flex justify-between"><span>Kursi tersedia:</span><span class="text-green-600 font-bold">${s.available_seats}/${s.bus.capacity}</span></div>
+                        <div class="flex justify-between"><span>Kursi tersedia:</span><span class="text-green-600 font-bold"> ${s.bus.capacity - s.booked_seats}/${s.bus.capacity}</span></div>
                     </div>
                     <div class="mt-4 flex gap-2">
                         <a href="/schedules/${s.id}/order" class="flex-1 bg-red-600 text-white text-center py-2 rounded">Pesan Tiket</a>
@@ -148,33 +148,141 @@ async function loadSchedules() {
 }
 
 /* === TRACKING MODAL === */
-let map, marker;
+let map = null;
+let marker = null;
+let polyline = null;
 function openTracking(busId) {
     document.getElementById('trackingModal').classList.remove('hidden');
     if (!map) {
         map = L.map('trackingMap').setView([-6.2, 106.8166], 12);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
     }
-    fetch(`/api/bus-location/${busId}`)
+    // Fetch lokasi bus
+    fetch(`/tracking/bus/${busId}`)
+        .then(r => {
+            if (!r.ok) throw new Error('Failed to fetch');
+            return r.json();
+        })
+        .then(data => {
+            // Update nama bus
+            document.getElementById('busName').textContent = data.name;
+            
+            // Set view ke lokasi bus
+            map.setView([data.lat, data.lng], 16);
+            
+            // Hapus marker lama jika ada
+            if (marker) map.removeLayer(marker);
+            
+            // Buat marker baru dengan informasi lengkap
+            marker = L.marker([data.lat, data.lng])
+                .addTo(map)
+                .bindPopup(`
+                    <div style="min-width: 200px;">
+                        <b>${data.name}</b><br>
+                        <hr style="margin: 5px 0;">
+                        <small>
+                            📍 Lat: ${data.lat.toFixed(6)}<br>
+                            📍 Lng: ${data.lng.toFixed(6)}<br>
+                            🎯 Akurasi: ${data.accuracy} meter<br>
+                            🚗 Kecepatan: ${(data.speed * 3.6).toFixed(1)} km/h<br>
+                            🕐 Update: ${data.last_update}
+                        </small>
+                    </div>
+                `)
+                .openPopup();
+            
+            // Opsional: Load dan tampilkan rute perjalanan
+            loadBusRoute(busId);
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+            
+            // Fallback untuk demo/testing
+            const lat = -6.8556219; // Menggunakan koordinat dari data Anda
+            const lng = 107.9217022;
+            
+            map.setView([lat, lng], 16);
+            
+            if (marker) map.removeLayer(marker);
+            
+            marker = L.marker([lat, lng])
+                .addTo(map)
+                .bindPopup(`<b>Bus #${busId}</b><br><small>Mode Demo</small>`)
+                .openPopup();
+            
+            document.getElementById('busName').textContent = `Bus #${busId}`;
+        });
+}
+// Fungsi untuk menampilkan rute perjalanan bus
+function loadBusRoute(busId) {
+    fetch(`/tracking/bus/${busId}/route`)
         .then(r => r.json())
         .then(data => {
-            document.getElementById('busName').textContent = data.name;
-            map.setView([data.lat, data.lng], 14);
-            if (marker) map.removeLayer(marker);
-            marker = L.marker([data.lat, data.lng]).addTo(map).bindPopup(`<b>${data.name}</b>`).openPopup();
+            if (data.route && data.route.length > 1) {
+                // Hapus polyline lama jika ada
+                if (polyline) map.removeLayer(polyline);
+                
+                // Buat array koordinat untuk polyline
+                const latlngs = data.route.map(point => [point.lat, point.lng]);
+                
+                // Buat polyline baru
+                polyline = L.polyline(latlngs, {
+                    color: 'blue',
+                    weight: 3,
+                    opacity: 0.7,
+                    smoothFactor: 1
+                }).addTo(map);
+                
+                // Tambahkan marker kecil di setiap titik
+                data.route.forEach((point, index) => {
+                    if (index % 5 === 0) { // Hanya tampilkan setiap 5 titik untuk performa
+                        L.circleMarker([point.lat, point.lng], {
+                            radius: 3,
+                            fillColor: "#3388ff",
+                            color: "#fff",
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        }).addTo(map)
+                        .bindPopup(`<small>Waktu: ${point.time}<br>Speed: ${(point.speed * 3.6).toFixed(1)} km/h</small>`);
+                    }
+                });
+            }
         })
-        .catch(() => {
-            const lat = -6.2 + Math.random() * 0.02;
-            const lng = 106.8166 + Math.random() * 0.02;
-            map.setView([lat, lng], 14);
-            if (marker) map.removeLayer(marker);
-            marker = L.marker([lat, lng]).addTo(map).bindPopup(`Bus #${busId}`).openPopup();
-            document.getElementById('busName').textContent = `Bus #${busId}`;
+        .catch(error => {
+            console.log('Tidak dapat memuat rute:', error);
         });
 }
 function closeTracking() {
     document.getElementById('trackingModal').classList.add('hidden');
+    
+    // Clear polyline jika ada
+    if (polyline) {
+        map.removeLayer(polyline);
+        polyline = null;
+    }
 }
+
+// Auto refresh setiap 30 detik
+let refreshInterval = null;
+function startAutoRefresh(busId) {
+    // Clear interval lama jika ada
+    if (refreshInterval) clearInterval(refreshInterval);
+    
+    // Set interval baru
+    refreshInterval = setInterval(() => {
+        openTracking(busId);
+    }, 30000); // Refresh setiap 30 detik
+}
+// Hentikan auto refresh saat modal ditutup
+function stopAutoRefresh() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+    }
+}
+
+
 </script>
 <script>
     // Scroll smooth untuk link internal

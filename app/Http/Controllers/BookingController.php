@@ -26,7 +26,7 @@ public function store(Request $request, Schedule $schedule)
     $total = count($seats) * $schedule->price;
 
     $booking = $schedule->bookings()->create([
-        'user_id' => auth()->id(),
+        'user_id' => auth()->id,
         'passenger_name' => $request->passenger_name,
         'passenger_phone' => $request->passenger_phone,
         'seat_number' => $request->seat_numbers,

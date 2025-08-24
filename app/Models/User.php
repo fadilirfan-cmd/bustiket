@@ -15,7 +15,7 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable, HasRoles;
 
     protected $fillable = [
-        'name', 'phone', 'gender', 'role'
+        'name', 'whatsapp', 'gender', 'role','bus_id','is_verified','otp','otp_expires_at'
     ];
 
 }
