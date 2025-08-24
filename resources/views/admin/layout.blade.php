@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="csrf-token" content="{{ csrf_token() }}" />
-  <title>PIC Dashboard - PT Medal Sekarwangi BUS</title>
+  <title>Admin Dashboard - PT Medal Sekarwangi BUS</title>
   @vite(['resources/css/app.css','resources/js/app.js'])
 
   {{-- Leaflet --}}
@@ -39,6 +39,7 @@
       </div>
 
       <nav class="flex-1 px-2 py-4 space-y-1">
+       
         <a href="{{ route('pic.dashboard.my-bus') }}"
            class="block px-3 py-2 rounded hover:bg-red-800 hover:text-white {{ request()->routeIs('pic.dashboard.my-bus') ? 'nav-active' : '' }}">
           Identitas BUS
@@ -51,7 +52,7 @@
            class="block px-3 py-2 rounded hover:bg-red-800 hover:text-white {{ request()->routeIs('pic.schedules') ? 'nav-active' : '' }}">
           Jadwal
         </a>
-        <a href="{{ route('pic.order') }}"
+        <a href="{{ route('pic.passengers') }}"
            class="block px-3 py-2 rounded hover:bg-red-800 hover:text-white {{ request()->routeIs('pic.passengers') ? 'nav-active' : '' }}">
           Order Bus
         </a>
@@ -76,8 +77,8 @@
         <div class="text-right">
           @if($bus)
             <div class="text-sm text-gray-500">Assigned Bus</div>
-            <div class="font-semibold">{{ $bus->bus_number }} — {{ $bus->bus_name }}</div>
-            <div class="text-xs text-gray-500">Type: {{ $bus->type }} | Capacity: {{ $bus->capacity }}</div>
+            <div class="font-semibold">{{ $bus->bus_code }} — {{ $bus->bus_name }}</div>
+            <div class="text-xs text-gray-500">Plate: {{ $bus->plate_number }} | Capacity: {{ $bus->capacity }}</div>
           @else
             <div class="text-sm text-gray-500">No bus assigned</div>
           @endif

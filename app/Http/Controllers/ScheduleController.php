@@ -12,28 +12,19 @@ class ScheduleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Schedule::with(['bus']);
+        $query = Schedule::with(['bus', 'route']);
         
-        // Filter by date
-        if ($request->has('date')) {
-            $query->whereDate('departure_date', $request->date);
-        }
         
         // Filter by bus
-        if ($request->has('bus_id')) {
-            $query->where('bus_id', $request->bus_id);
-        }
-        
-        // Filter by status
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
+       
+        $query->where('bus_id', auth()->user()->bus_id);
         
         $schedules = $query->paginate(15);
         
         $buses = Bus::get();
-        
-        return view('schedules.index', compact('schedules', 'buses'));
+        return request()->expectsJson()
+        ? response()->json(['schedules' => $schedules])
+        : view('pic.schedules');
     }
 
     public function create()

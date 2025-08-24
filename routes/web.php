@@ -170,17 +170,13 @@ Route::middleware(['auth'])->prefix('pic')->name('pic.')->group(function () {
     Route::get('/tracking/current-trip', [BusTrackingController::class, 'getCurrentTrip'])->name('tracking.current');
     
     // Schedule View (Read Only)
-    Route::get('/schedules', [PICDashboardController::class, 'schedules'])->name('schedules');
-    Route::get('/schedules/today', [PICDashboardController::class, 'todaySchedule'])->name('schedules.today');
+    Route::get('/schedules', [ScheduleController::class, 'index'])->name('schedules');
+    //Route::get('/schedules/today', [PICDashboardController::class, 'todaySchedule'])->name('schedules.today');
     
     // Passenger List
-    Route::get('/passengers', [PICDashboardController::class, 'passengers'])->name('passengers');
-    Route::get('/passengers/today', [PICDashboardController::class, 'todayPassengers'])->name('passengers.today');
-    Route::post('/passengers/{order}/check-in', [PICDashboardController::class, 'checkInPassenger'])->name('passengers.checkin');
+    Route::get('/order', [OrderController::class, 'index'])->name('order');
     
-    // Bus Status Update
-    Route::post('/bus-status/update', [PICDashboardController::class, 'updateBusStatus'])->name('bus.status.update');
-    Route::post('/bus-status/breakdown', [PICDashboardController::class, 'reportBreakdown'])->name('bus.breakdown');
+    
 });
 /*
 |--------------------------------------------------------------------------

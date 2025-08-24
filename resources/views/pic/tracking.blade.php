@@ -4,7 +4,7 @@
 @section('content')
   <h1 class="text-2xl font-bold mb-4">Tracking</h1>
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="grid grid-cols-1 lg:grid-cols-1 gap-6">
     <div class="lg:col-span-2 space-y-4">
       <div id="map" class="w-full h-[520px] rounded shadow bg-gray-200"></div>
 
@@ -27,29 +27,6 @@
       </div>
     </div>
 
-    <div class="space-y-4">
-      <div class="bg-white rounded shadow p-4">
-        <h2 class="font-semibold mb-2">Current Trip</h2>
-        <div class="text-sm space-y-1">
-          <div>Status: <span id="trip-status" class="font-semibold">-</span></div>
-          <div>Started: <span id="trip-started">-</span></div>
-          <div>Last Loc: <span id="trip-lastloc">-</span></div>
-          <div>Updated: <span id="trip-updated">-</span></div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded shadow p-4">
-        <h2 class="font-semibold mb-2">Manual Update</h2>
-        <div class="grid grid-cols-2 gap-3">
-          <input id="lat" type="text" class="border rounded px-3 py-2" placeholder="Latitude">
-          <input id="lng" type="text" class="border rounded px-3 py-2" placeholder="Longitude">
-        </div>
-        <button id="btn-send-manual" class="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
-          Kirim Lokasi Manual
-        </button>
-        <div class="text-xs text-gray-500 mt-2">Akurasi/Kecepatan akan diisi otomatis jika dari GPS.</div>
-      </div>
-    </div>
   </div>
 @endsection
 
@@ -174,22 +151,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
   });
 
-  // Manual update
-  document.getElementById('btn-send-manual').addEventListener('click', async () => {
-    const lat = parseFloat(document.getElementById('lat').value);
-    const lng = parseFloat(document.getElementById('lng').value);
-    if (isNaN(lat) || isNaN(lng)) return showToast('Masukkan lat/lng valid', 'warn');
-    try {
-      await axios.post(routes.update, { lat, lng });
-      showToast('Lokasi manual terkirim');
-      setBusMarker(lat, lng);
-      routeLine.addLatLng([lat, lng]);
-      map.setView([lat, lng], 15);
-      loadCurrentTrip(false);
-    } catch (e) {
-      showToast(e?.response?.data?.message || 'Gagal mengirim lokasi', 'error');
-    }
-  });
+
 });
 </script>
 @endpush

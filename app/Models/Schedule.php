@@ -53,6 +53,11 @@ class Schedule extends Model
         return $this->belongsTo(Route::class, 'route_id');
     }
 
+    public function order()
+    {
+        return $this->hasMany(Order::class);
+    }
+
     /**
      * Get the bookings for the schedule.
      */

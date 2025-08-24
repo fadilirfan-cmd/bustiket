@@ -3,21 +3,33 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\BusLocation;
 
 class BusTrackingController extends Controller
 {
     public function index() { return view('pic.tracking'); }
-public function getCurrentTrip() {
-    // Kembalikan JSON seperti:
-    // return response()->json([
-    //   'status' => 'on_trip'|'idle',
-    //   'started_at' => now()->subMinutes(25),
-    //   'latest_location' => ['lat'=>-6.2,'lng'=>106.8,'updated_at'=>now()],
-    //   'points' => [ ['lat'=>-6.2,'lng'=>106.8], ... ]
-    // ]);
-}
-public function updateLocation(Request $r) {
-    // Terima lat,lng,(accuracy,speed)
+
+public function updateLocation(Request $request) {
+    $validated = $request->validate([
+        'lat' => 'required|numeric',
+        'lng' => 'required|numeric',
+        'accuracy' => 'nullable|numeric',
+        'speed' => 'nullable|numeric',
+        'timestamp' => 'nullable|date',
+    ]);
+    $location = new BusLocation();
+    $location->bus_id = auth()->user()->bus_id;
+    $location->latitude = $validated['lat'];
+    $location->longitude = $validated['lng'];
+    $location->accuracy = $validated['accuracy'] ?? null;
+    $location->speed ='0.00';
+    $location->timestamp = $validated['timestamp'] ?? now();
+    $location->save();
+    return response()->json([
+        'success' => true,
+        'message' => 'Lokasi bus berhasil diperbarui',
+        'data' => $location
+    ]);
 }
 public function startTrip() { /* ... */ }
 public function endTrip() { /* ... */ }

@@ -14,7 +14,8 @@
     <table class="min-w-full text-sm">
       <thead class="bg-gray-50 text-left">
         <tr>
-          <th class="px-4 py-3">Rute</th>
+        <th class="px-4 py-3">Nama Bus</th>  
+        <th class="px-4 py-3">Rute</th>
           <th class="px-4 py-3">Berangkat</th>
           <th class="px-4 py-3">Tiba</th>
           <th class="px-4 py-3">Harga</th>
@@ -32,8 +33,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const routes = {
-    all: "{{ route('pic.schedules') }}",
-    today: "{{ route('pic.schedules.today') }}",
+    all: "{{ route('pic.schedules') }}"
   };
 
   async function load(url) {
@@ -41,8 +41,10 @@ document.addEventListener('DOMContentLoaded', function () {
     body.innerHTML = `<tr><td class="px-4 py-3" colspan="6">Loading...</td></tr>`;
     document.getElementById('empty').classList.add('hidden');
     try {
-      const { data } = await axios.get(url);
-      const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+      const response = await axios.get(url);
+      console.log(response.data);
+const schedules = response.data.schedules || response.data;
+const list = Array.isArray(schedules.data) ? schedules.data : (Array.isArray(schedules) ? schedules : []);
       if (!list.length) {
         body.innerHTML = '';
         document.getElementById('empty').classList.remove('hidden');
@@ -50,14 +52,34 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       body.innerHTML = list.map(s => `
         <tr class="hover:bg-gray-50">
-          <td class="px-4 py-3 font-semibold">${s.route_from} → ${s.route_to}</td>
-          <td class="px-4 py-3">${s.departure_time}</td>
-          <td class="px-4 py-3">${s.arrival_time}</td>
+        <td class="px-4 py-3 font-semibold">${s.bus.bus_name}</td>
+          <td class="px-4 py-3 font-semibold">${s.route.origin} → ${s.route.destination}</td>
+          <td class="px-4 py-3">${new Date(s.departure_time).toLocaleString('id-ID', {
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Asia/Jakarta',
+  hour12: false
+}).replace(/\./g, ':')} WIB</td>
+          <td class="px-4 py-3">${new Date(s.arrival_time).toLocaleString('id-ID', {
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Asia/Jakarta',
+  hour12: false
+}).replace(/\./g, ':')} WIB</td>
           <td class="px-4 py-3">Rp ${Number(s.price || 0).toLocaleString('id-ID')}</td>
-          <td class="px-4 py-3 text-xs">${Array.isArray(s.days_of_week) ? s.days_of_week.join(', ') : (s.days_of_week || '-')}</td>
+         <td class="px-4 py-3">${new Date(s.departure_time).toLocaleDateString('id-ID', {
+  weekday: 'long',
+  timeZone: 'Asia/Jakarta'
+})}</td>
           <td class="px-4 py-3">
-            <span class="px-2 py-1 rounded text-xs ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}">
-              ${s.is_active ? 'Active' : 'Inactive'}
+            <span class="px-2 py-1 rounded text-xs ${s.status ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}">
+              ${s.status ? 'Active' : 'Inactive'}
             </span>
           </td>
         </tr>
@@ -71,7 +93,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.getElementById('btn-load-all').addEventListener('click', () => load(routes.all));
   document.getElementById('btn-load-today').addEventListener('click', () => load(routes.today));
-  load(routes.today);
+  load(routes.all);
 });
 </script>
 @endpush
